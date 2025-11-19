@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class TestCaseAgent(LlmAgent):
     """
     ADK-based TestCaseAgent using OpenAI via LiteLLM.
-    Uses ADK's LlmAgent for model delegation.
+    Compatible with ADK Runner for orchestration.
     """
     
     def __init__(self, name: str = "TestCaseAgent"):
@@ -46,7 +46,19 @@ Requirements:
 - Avoid duplication; each TC must test distinct functionality.
             """
         )
-        logger.info(f"TestCaseAgent initialized with model={model_name} via ADK")
+        logger.info(f"TestCaseAgent initialized with model={model_name} (ADK-compatible)")
+    
+    async def run_async(self, input_data: dict):
+        """
+        Async method for ADK Runner compatibility.
+        Called by ADK orchestrator.
+        """
+        spec = input_data.get("spec", "")
+        print(f"[TestCaseAgent.run_async] {self.name} processing spec (len={len(spec)})")
+        
+        # Use sync wrapper internally
+        result = generate_test_cases_sync(spec, self)
+        return result
 
 
 # For synchronous wrapper using OpenAI client directly
