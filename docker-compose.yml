@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:latest
+    container_name: redis_cache
+    ports:
+      - "6381:6379" # Changed external port to 6381
+    volumes:
+      - redis_data:/data
+    command: ["redis-server", "--save", "60 1", "--loglevel", "warning"]
+
+volumes:
+  redis_data:
