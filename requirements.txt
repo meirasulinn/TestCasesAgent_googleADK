@@ -3,3 +3,7 @@ redis
 openai
 google-adk
 PyPDF2
+uvicorn
+starlette
+fastapi
+python-dotenv
