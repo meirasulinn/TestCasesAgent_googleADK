@@ -6,6 +6,11 @@ from PyPDF2 import PdfReader
 from src.agents.test_case_orchestrator import TestCaseOrchestrator
 from src.agents.google_adk_agent import TestCaseAgent
 import json
+from dotenv import load_dotenv
+import os
+
+# Load environment variables from .env
+load_dotenv()
 
 app = FastAPI()
 
@@ -22,7 +27,9 @@ def read_root():
 
 @app.post("/run")
 def run_agents(input_data: dict):
+    print(f"\n[API /run] Received POST request with data keys: {list(input_data.keys())}")
     results = orchestrator.run(input_data)
+    print(f"[API /run] Returning results\n")
     return {"results": results}
 
 @app.post("/upload")

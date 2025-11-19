@@ -1,176 +1,178 @@
 from google.adk.agents import LlmAgent
-import re
 import os
 import json
-from typing import List, Dict, Any, Union
+import logging
+from typing import Dict, Any, Union, Optional
+from openai import OpenAI, APIError
+import re
 
-try:
-    from openai import OpenAI  # openai>=1.x SDK
-except Exception:  # pragma: no cover
-    OpenAI = None  # type: ignore
+logger = logging.getLogger(__name__)
 
 class TestCaseAgent(LlmAgent):
+    """
+    ADK-based TestCaseAgent using OpenAI via LiteLLM.
+    Uses ADK's LlmAgent for model delegation.
+    """
+    
     def __init__(self, name: str = "TestCaseAgent"):
+        model_name = os.getenv("OPENAI_MODEL", "openai/gpt-4o-mini")
         super().__init__(
-            model="gemini-2.0-flash",
+            model=model_name,
             name=name,
-            description="Agent for generating test cases",
+            description="Agent for generating comprehensive test cases via ADK + OpenAI",
             instruction="""
-You are a test case generation agent. Given a software/product specification text, produce a structured JSON
-object with comprehensive test coverage. Follow this schema strictly:
+You are a senior QA engineer specializing in test case generation. 
+Produce comprehensive, high-quality test cases in strict JSON format.
+
+JSON Schema (REQUIRED):
 {
   "test_cases": [
     {
       "id": "TC-001",
-      "title": "Short title summarizing intent",
+      "title": "Descriptive title",
       "steps": ["Step 1", "Step 2"],
-      "expected_result": "Result after completing steps",
-      "tags": ["functional", "login"],
+      "expected_result": "Expected outcome",
+      "tags": ["category1"],
       "priority": "high|medium|low"
     }
   ]
 }
-Return ONLY JSON. If the spec is ambiguous, still infer plausible edge cases.
+
+Requirements:
+- Cover positive, negative, edge, and security scenarios.
+- Each test case must be independent and executable.
+- Steps must be clear, actionable, and verifiable.
+- Return ONLY valid JSON; no extra text.
+- Avoid duplication; each TC must test distinct functionality.
             """
         )
+        logger.info(f"TestCaseAgent initialized with model={model_name} via ADK")
 
-    def run(self, spec: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
-        """Generate test cases using OpenAI if available; otherwise fallback heuristics.
 
-        Accepts a raw spec string or a dict containing 'spec'.
-        """
-        # Normalize spec text
-        if isinstance(spec, dict):
-            spec_text = spec.get("spec") or json.dumps(spec, ensure_ascii=False)
+# For synchronous wrapper using OpenAI client directly
+def generate_test_cases_sync(spec: str, agent: Optional[TestCaseAgent] = None) -> Dict[str, Any]:
+    """
+    Synchronous test case generation via OpenAI client (LiteLLM style).
+    Uses model specified in OPENAI_MODEL env var (default: openai/gpt-4o-mini).
+    
+    Args:
+        spec: Specification text.
+        agent: TestCaseAgent instance (optional; used to get model/instruction).
+    
+    Returns:
+        Generated test cases dict with structure {test_cases: [...]}.
+    """
+    if not spec.strip():
+        logger.error("Empty spec provided")
+        raise ValueError("Specification cannot be empty")
+    
+    msg = f"[SYNC_GEN] Sync generation triggered for spec (len={len(spec)})"
+    print(msg)
+    logger.info(msg)
+    
+    # Get OpenAI API key
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        msg = "[SYNC_GEN] ERROR: OPENAI_API_KEY not set in environment"
+        print(msg)
+        logger.error(msg)
+        raise ValueError("OPENAI_API_KEY environment variable is required")
+    print(f"[SYNC_GEN] API key found (first 10 chars: {api_key[:10]}...)")
+    
+    # Initialize OpenAI client
+    print(f"[SYNC_GEN] Initializing OpenAI client...")
+    client = OpenAI(api_key=api_key)
+    print(f"[SYNC_GEN] OpenAI client initialized")
+    
+    # Use agent's instruction if available, else fallback
+    instruction = agent.instruction if agent else """
+You are a senior QA engineer specializing in test case generation. 
+Produce comprehensive, high-quality test cases in strict JSON format.
+
+JSON Schema (REQUIRED):
+{
+  "test_cases": [
+    {
+      "id": "TC-001",
+      "title": "Descriptive title",
+      "steps": ["Step 1", "Step 2"],
+      "expected_result": "Expected outcome",
+      "tags": ["category1"],
+      "priority": "high|medium|low"
+    }
+  ]
+}
+
+Requirements:
+- Cover positive, negative, edge, and security scenarios.
+- Each test case must be independent and executable.
+- Steps must be clear, actionable, and verifiable.
+- Return ONLY valid JSON; no extra text.
+- Avoid duplication; each TC must test distinct functionality.
+"""
+    
+    prompt = f"""{instruction}
+
+SPECIFICATION:
+{spec}
+
+Generate comprehensive test cases for the above specification.
+Return ONLY valid JSON matching the schema; no extra text."""
+    
+    try:
+        msg = "[SYNC_GEN] Calling OpenAI API (gpt-4o-mini)..."
+        print(msg)
+        logger.info(msg)
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",  # Use direct model name (OpenAI handles this)
+            messages=[
+                {"role": "system", "content": instruction},
+                {"role": "user", "content": f"SPECIFICATION:\n{spec}\n\nGenerate comprehensive test cases for the above specification. Return ONLY valid JSON matching the schema; no extra text."}
+            ],
+            temperature=0.7,
+            max_tokens=2000
+        )
+        
+        raw_response = response.choices[0].message.content.strip()
+        msg = f"[SYNC_GEN] OpenAI response received ({len(raw_response)} chars)"
+        print(msg)
+        logger.info(msg)
+        
+        # Extract JSON from response (may contain markdown code blocks)
+        json_match = re.search(r'\{[\s\S]*\}', raw_response)
+        if json_match:
+            json_str = json_match.group(0)
+            test_cases_dict = json.loads(json_str)
+            msg = f"[SYNC_GEN] Parsed {len(test_cases_dict.get('test_cases', []))} test cases from response"
+            print(msg)
+            logger.info(msg)
+            return test_cases_dict
         else:
-            spec_text = str(spec or "")
-
-        # Prefer OpenAI when available
-        openai_key = os.getenv("OPENAI_API_KEY")
-        if openai_key and OpenAI is not None and spec_text.strip():
-            client = OpenAI()
-            model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-            system_prompt = (
-                "You are a senior QA engineer. Generate comprehensive, deduplicated, "
-                "and structured test cases in strict JSON. Cover positive, negative, "
-                "edge, and security scenarios when relevant."
-            )
-            user_prompt = (
-                "Create test cases for the following specification. Return ONLY JSON with the schema:\n"
-                "{\n  \"test_cases\": [\n    {\n      \"id\": \"TC-001\",\n      \"title\": \"...\",\n      \"steps\": [\"Step 1\", \"Step 2\"],\n      \"expected_result\": \"...\",\n      \"tags\": [\"login\", \"negative\"],\n      \"priority\": \"high|medium|low\"\n    }\n  ]\n}\n\n"
-                f"Specification:\n{spec_text}"
-            )
-            completion = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0.3,
-            )
-            content = completion.choices[0].message.content or "{}"
-            # Try parse JSON
-            try:
-                data = json.loads(content)
-            except json.JSONDecodeError:
-                # Attempt to extract JSON snippet
-                start = content.find('{')
-                end = content.rfind('}')
-                if start != -1 and end != -1 and end > start:
-                    try:
-                        data = json.loads(content[start : end + 1])
-                    except Exception:
-                        data = {"test_cases": []}
-                else:
-                    data = {"test_cases": []}
-            return {"status": "success", **data}
-
-        # Heuristic fallback when OpenAI not available or spec empty
-        cleaned = re.sub(r"\s+", " ", spec_text.strip())
-        if not cleaned:
-            return {"test_cases": []}
-
-        # Split into candidate requirement sentences.
-        raw_sentences = re.split(r"(?<=[.!?])\s+|\n+|;", cleaned)
-        sentences = [s.strip() for s in raw_sentences if s.strip()]
-
-        cases: List[Dict[str, Any]] = []
-        for idx, sentence in enumerate(sentences, start=1):
-            # Derive a simple title.
-            title = sentence[:80]
-            steps = self._derive_steps(sentence)
-            expected = self._derive_expected(sentence)
-            tags = self._infer_tags(sentence)
-            priority = self._infer_priority(sentence)
-            case = {
-                "id": f"TC-{idx:03d}",
-                "title": title,
-                "steps": steps,
-                "expected_result": expected,
-                "tags": tags,
-                "priority": priority,
-            }
-            cases.append(case)
-        return {"test_cases": cases}
-
-    def _derive_steps(self, sentence: str) -> List[str]:
-        # Simple heuristic expansion.
-        steps: List[str] = []
-        lowered = sentence.lower()
-        if "login" in lowered or "log in" in lowered:
-            steps.extend([
-                "Navigate to login page",
-                "Enter valid username",
-                "Enter valid password",
-                "Click login",
-            ])
-            if "incorrect" in lowered or "invalid" in lowered:
-                steps.append("Enter invalid password and attempt login")
-        if "lock" in lowered:
-            steps.append("Repeat failed login until lock condition triggers")
-        if not steps:
-            steps.append(f"Interact: {sentence[:60]}")
-        return steps
-
-    def _derive_expected(self, sentence: str) -> str:
-        lowered = sentence.lower()
-        if "incorrect" in lowered or "invalid" in lowered:
-            return "System displays an authentication error message"
-        if "lock" in lowered:
-            return "Account access is blocked after threshold reached"
-        if "login" in lowered:
-            return "User is authenticated and redirected to dashboard"
-        return "Behavior matches specification without errors"
-
-    def _infer_tags(self, sentence: str) -> List[str]:
-        tags = []
-        l = sentence.lower()
-        if "login" in l:
-            tags.append("login")
-        if "password" in l:
-            tags.append("security")
-        if "error" in l or "invalid" in l:
-            tags.append("error-handling")
-        if "lock" in l:
-            tags.append("lockout")
-        if not tags:
-            tags.append("general")
-        return tags
-
-    def _infer_priority(self, sentence: str) -> str:
-        l = sentence.lower()
-        if any(k in l for k in ["security", "password", "lock", "login"]):
-            return "high"
-        if any(k in l for k in ["error", "validation"]):
-            return "medium"
-        return "low"
+            msg = "[SYNC_GEN] No JSON found in response, attempting direct parse"
+            print(msg)
+            logger.warning(msg)
+            test_cases_dict = json.loads(raw_response)
+            return test_cases_dict
+            
+    except APIError as e:
+        msg = f"[SYNC_GEN] OpenAI API error: {e}"
+        print(msg)
+        logger.error(msg)
+        raise
+    except json.JSONDecodeError as e:
+        msg = f"[SYNC_GEN] Failed to parse JSON from response: {e}"
+        print(msg)
+        logger.error(msg)
+        logger.debug(f"Raw response: {raw_response[:200]}")
+        raise ValueError(f"OpenAI returned invalid JSON: {e}")
 
 # Example usage
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.DEBUG)
+    
     agent = TestCaseAgent()
-    input_spec = """
-        The system should allow users to log in with a username and password.
-        If the credentials are incorrect, an error message should be displayed.
-    """
-    response = agent.run(input_spec)
-    print(response)
+    sample_spec = "User login with email and password. Lock after 5 attempts."
+    
+    # POC: use sync wrapper (not real ADK yet)
+    result = generate_test_cases_sync(sample_spec, agent)
+    print("Generated:", json.dumps(result, indent=2))
