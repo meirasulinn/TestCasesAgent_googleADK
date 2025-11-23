@@ -9,7 +9,7 @@ if __name__ == "__main__":
     # Start the FastAPI server
     subprocess.run([
         sys.executable, "-m", "uvicorn",
-        "src.api:app",
+        "src.api_adk:app",
         "--host", "127.0.0.1",
         "--port", "8100"
     ])

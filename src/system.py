@@ -1,45 +1,41 @@
 import sys
 import os
+import asyncio
 
 # Add the project root directory to PYTHONPATH
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.rag.redis_client import RedisClient
-from src.rag.faiss_index import FaissIndex
-from src.agents.test_case_orchestrator import TestCaseOrchestrator
+from src.agents.adk_orchestrator import ADKTestCaseOrchestrator
+from src.agents.google_adk_agent import TestCaseAgent
+
 
 class IntegratedSystem:
+    """High-level wrapper using the ADK orchestrator (v2)."""
+
     def __init__(self):
-        self.redis_client = RedisClient()
-        self.faiss_index = FaissIndex(dimension=128)
-        self.orchestrator = TestCaseOrchestrator()
+        self.orchestrator = ADKTestCaseOrchestrator()
+        # Register two ADK agents (Agent1, Agent2)
+        self.orchestrator.register_agent(TestCaseAgent("Agent1"))
+        self.orchestrator.register_agent(TestCaseAgent("Agent2"))
 
-    def process_specification(self, input_spec):
-        print("Processing specification...")
+    def process_specification(self, input_spec: str):
+        """Synchronous wrapper that runs the ADK async flow and returns results.
 
-        # Store input in Redis
-        self.redis_client.set("input_spec", input_spec)
+        Input: spec text (string)
+        Output: dict with keys: rag_source, results (per-agent test cases)
+        """
+        print("Processing specification with ADK orchestrator...")
+        payload = {"spec": input_spec}
+        result = asyncio.run(self.orchestrator.run(payload))
+        return result
 
-        # Generate test cases using orchestrator
-        test_cases = self.orchestrator.run(input_spec)
-
-        # Index test cases in FAISS
-        vectors = self._convert_to_vectors(test_cases)
-        self.faiss_index.add_vectors(vectors)
-
-        return test_cases
-
-    def _convert_to_vectors(self, test_cases):
-        # Dummy implementation for converting test cases to vectors
-        import numpy as np
-        return np.random.random((len(test_cases), 128)).astype('float32')
 
 # Example usage
 if __name__ == "__main__":
     system = IntegratedSystem()
-    input_spec = """
-        The system should allow users to log in with a username and password.
-        If the credentials are incorrect, an error message should be displayed.
-    """
-    test_cases = system.process_specification(input_spec)
-    print("Generated Test Cases:", test_cases)
+    input_spec = (
+        "The system should allow users to log in with a username and password.\n"
+        "If the credentials are incorrect, an error message should be displayed."
+    )
+    result = system.process_specification(input_spec)
+    print("Orchestration Result:", result)
