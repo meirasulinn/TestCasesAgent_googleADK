@@ -1,0 +1,4 @@
+id,title,preconditions,steps,expected_result,priority
+TC-001,Successful login,"User 'alice@example.com' exists","POST /api/v1/auth/login with JSON body {username: alice@example.com, password: CorrectHorseBatteryStaple}",HTTP 200 with token,high
+TC-002,Invalid password,"User 'bob@example.com' exists","POST /api/v1/auth/login with JSON body {username: bob@example.com, password: wrongpass}",HTTP 401 Unauthorized,medium
+TC-003,Missing username field,,"POST /api/v1/auth/login with JSON body {password: x}",HTTP 400 Bad Request,low

@@ -1,0 +1,16 @@
+Login API Specification (Plain Text)
+
+Version: 1.0
+
+Endpoint: POST /api/v1/auth/login
+Request body: { username: string, password: string }
+
+Acceptance:
+- 200 with JWT for correct credentials
+- 401 for invalid credentials
+- 400 for missing fields
+
+Test Cases:
+TC-001: Successful login -> 200 + token
+TC-002: Invalid password -> 401
+TC-003: Missing username -> 400

@@ -1,5 +1,5 @@
 faiss-cpu
-redis
+redis>=4.5.0
 openai
 google-adk
 PyPDF2
@@ -7,3 +7,4 @@ uvicorn
 starlette
 fastapi
 python-dotenv
+pydantic
