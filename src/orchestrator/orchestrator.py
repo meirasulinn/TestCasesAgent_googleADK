@@ -14,6 +14,8 @@ from google.adk.artifacts import InMemoryArtifactService
 from google.genai import types
 from src.agents.base_agent import BaseAgent
 from src.agents.test_case_agent import TestCaseAgent
+from src.agents.weather_agent import WeatherAgent
+from src.agents.time_agent import TimeAgent
 from src.services.session_manager import SessionManager, session_manager
 from src.services.faiss_service import FAISSService
 from src.tools.file_parser_tool import FileParserTool
@@ -84,6 +86,20 @@ class Orchestrator:
         )
         self.agents["test_case_agent"] = test_case_agent
         
+        # Register WeatherAgent
+        weather_agent = WeatherAgent(
+            user_id=self.user_id,
+            session_manager=self.session_manager
+        )
+        self.agents["weather_agent"] = weather_agent
+        
+        # Register TimeAgent
+        time_agent = TimeAgent(
+            user_id=self.user_id,
+            session_manager=self.session_manager
+        )
+        self.agents["time_agent"] = time_agent
+        
         # Create router agent (LlmAgent that decides which agent to use)
         self.router_agent = LlmAgent(
             model=LiteLlm(model=settings.OPENAI_MODEL),
@@ -92,6 +108,8 @@ class Orchestrator:
 
 Available agents:
 - test_case_agent: Generates comprehensive test cases from product specifications
+- weather_agent: Provides current weather information for cities worldwide
+- time_agent: Provides current time information for different timezones
 
 Your job:
 1. Analyze the user's request
@@ -100,6 +118,8 @@ Your job:
 
 Rules:
 - If the request is about generating test cases, specifications, or testing → "test_case_agent"
+- If the request is about weather, climate, or temperature → "weather_agent"
+- If the request is about time, clock, or timezone → "time_agent"
 - If unclear, choose the most relevant agent
 - Respond with ONLY the agent name, nothing else"""
         )
