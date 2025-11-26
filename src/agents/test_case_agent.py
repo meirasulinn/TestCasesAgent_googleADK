@@ -33,14 +33,12 @@ class TestCaseAgent(BaseAgent):
     def __init__(
         self,
         user_id: str,
-        session_manager: SessionManager,
-        faiss_service: FAISSService
+        session_manager: SessionManager
     ):
         super().__init__(
             name="TestCaseAgent",
             user_id=user_id,
-            session_manager=session_manager,
-            faiss_service=faiss_service
+            session_manager=session_manager
         )
         
         # Create ADK agent (LlmAgent with LiteLlm model)

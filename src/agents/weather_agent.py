@@ -22,16 +22,13 @@ class WeatherAgent(BaseAgent):
     Uses a simple function tool that ADK converts automatically.
     Works with OpenAI models!
     """
-    
-    def __init__(self, user_id: str, session_manager, faiss_service=None):
+    def __init__(self, user_id: str, session_manager):
         """Initialize WeatherAgent."""
         self.model = settings.OPENAI_MODEL
-        
         super().__init__(
             name="WeatherAgent",
             user_id=user_id,
-            session_manager=session_manager,
-            faiss_service=faiss_service
+            session_manager=session_manager
         )
         
         # Create ADK agent with function tool

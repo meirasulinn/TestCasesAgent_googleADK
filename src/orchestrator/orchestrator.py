@@ -45,29 +45,19 @@ class Orchestrator:
     def __init__(self, user_id: str):
         """
         Initialize orchestrator for a specific user.
-        
         Args:
             user_id: Unique user identifier
         """
         self.user_id = user_id
         self.session_manager = session_manager
-        self.faiss_service = FAISSService(user_id)
-        
-        # Tools
+        # No FAISSService here!
         self.file_parser = FileParserTool()
-        
-        # Agent registry
         self.agents: Dict[str, BaseAgent] = {}
-        
-        # ADK services for router
         self.adk_session_service = InMemorySessionService()
         self.adk_artifact_service = InMemoryArtifactService()
-        
-        # Router agent (will be created in initialize)
         self.router_agent: Optional[LlmAgent] = None
         self.router_runner: Optional[Runner] = None
         self.router_session_id: Optional[str] = None
-        
         logger.info(f"Orchestrator created for user {user_id}")
     
     async def initialize(self):
@@ -81,19 +71,16 @@ class Orchestrator:
         # Register agents
         test_case_agent = TestCaseAgent(
             user_id=self.user_id,
-            session_manager=self.session_manager,
-            faiss_service=self.faiss_service
+            session_manager=self.session_manager
         )
         self.agents["test_case_agent"] = test_case_agent
-        
-        # Register WeatherAgent
+
         weather_agent = WeatherAgent(
             user_id=self.user_id,
             session_manager=self.session_manager
         )
         self.agents["weather_agent"] = weather_agent
-        
-        # Register TimeAgent
+
         time_agent = TimeAgent(
             user_id=self.user_id,
             session_manager=self.session_manager
@@ -266,11 +253,12 @@ Rules:
             "size": len(file_content)
         })
         
-        # Add to FAISS for semantic search
-        self.faiss_service.add_document(
-            text=text_content,
-            metadata={"file_name": file_name, "type": "specification"}
-        )
+        # אם צריך להוסיף ל-FAISS, יש לעשות זאת דרך האייגנט המתאים
+        # לדוג':
+        # self.agents["test_case_agent"].faiss_service.add_document(
+        #     text=text_content,
+        #     metadata={"file_name": file_name, "type": "specification"}
+        # )
         
         # Automatically generate test cases using routing
         logger.info(f"Auto-generating test cases for user {self.user_id}")
@@ -304,8 +292,8 @@ Specification content:
         return {
             "user_id": self.user_id,
             "session_exists": True,
-            "files_count": len(session.get("files", [])),
-            "faiss_docs": self.faiss_service.size()
+            "files_count": len(session.get("files", []))
+            # אין מידע על FAISS כאן
         }
     
     async def cleanup(self):

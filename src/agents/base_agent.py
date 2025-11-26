@@ -16,43 +16,24 @@ logger = logging.getLogger(__name__)
 class BaseAgent(ABC):
     """
     Abstract base class for all agents.
-    
-    Features:
-    - Google ADK LlmAgent integration
-    - Access to Redis (via SessionManager)
-    - Access to session-local FAISS
-    - Access to Tools library
-    - Unified interface for all agents
+    Each agent initializes its own shared FAISS and Redis prefix by agent type.
     """
-    
     def __init__(
         self,
         name: str,
         user_id: str,
         session_manager: SessionManager,
-        faiss_service: FAISSService,
         model: Optional[str] = None
     ):
-        """
-        Initialize base agent.
-        
-        Args:
-            name: Agent name
-            user_id: User this agent is serving
-            session_manager: Redis session manager
-            faiss_service: FAISS service for this session
-            model: LLM model (defaults to settings.OPENAI_MODEL)
-        """
         self.name = name
         self.user_id = user_id
         self.session_manager = session_manager
-        self.faiss_service = faiss_service
+        agent_type = name.lower().replace("agent", "")
+        self.faiss_service = FAISSService(agent_type)
+        self.cache_prefix = f"{agent_type}:"
         self.model = model or settings.OPENAI_MODEL
-        
-        # ADK LlmAgent (to be configured in subclasses)
         self.adk_agent: Optional[LlmAgent] = None
-        
-        logger.info(f"BaseAgent {name} initialized for user {user_id}")
+        logger.info(f"BaseAgent {name} for user {user_id} - using shared FAISS '{agent_type}'")
     
     @abstractmethod
     def create_adk_agent(self) -> LlmAgent:
@@ -88,12 +69,14 @@ class BaseAgent(ABC):
         await self.session_manager.update_session(self.user_id, updates)
     
     async def get_cache(self, key: str) -> Optional[Any]:
-        """Get data from global cache."""
-        return await self.session_manager.get_cache(key)
-    
+        """Get data from agent-type global cache."""
+        full_key = f"{self.cache_prefix}{key}"
+        return await self.session_manager.get_cache(full_key)
+
     async def set_cache(self, key: str, value: Any, ttl: Optional[int] = None):
-        """Set data in global cache."""
-        await self.session_manager.set_cache(key, value, ttl)
+        """Set data in agent-type global cache."""
+        full_key = f"{self.cache_prefix}{key}"
+        await self.session_manager.set_cache(full_key, value, ttl)
     
     def search_session_data(self, query: str, top_k: int = 3) -> list:
         """Search user's session data using FAISS."""
