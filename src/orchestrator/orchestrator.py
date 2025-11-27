@@ -4,6 +4,7 @@ Each user gets their own orchestrator instance with intelligent routing between 
 Uses an LlmAgent as a router to decide which specialized agent to invoke.
 """
 import logging
+from src.services.mongo_session_history import MongoSessionHistory
 import json
 from typing import Dict, Any, Optional, List
 from google.adk.agents import LlmAgent
@@ -58,6 +59,7 @@ class Orchestrator:
         self.router_agent: Optional[LlmAgent] = None
         self.router_runner: Optional[Runner] = None
         self.router_session_id: Optional[str] = None
+        self.mongo_history = MongoSessionHistory()
         logger.info(f"Orchestrator created for user {user_id}")
     
     async def initialize(self):
@@ -163,6 +165,17 @@ Rules:
                 "message": message
             })
         
+        # שמירת הודעה והתגובה בהיסטוריית שיחה במונגו
+        self.mongo_history.save_message(
+            session_id=str(self.router_session_id),
+            user_id=self.user_id,
+            agent_type=agent_name,
+            message={
+                "user_message": message,
+                "agent_response": result.get("response", ""),
+                "timestamp": __import__('datetime').datetime.utcnow().isoformat()
+            }
+        )
         return {
             "response": result.get("response", ""),
             "agent_used": agent_name,
@@ -171,6 +184,17 @@ Rules:
             "coverage_areas": result.get("coverage_areas", []),
             "source": "orchestrator_routing"
         }
+        async def get_chat_history(self, agent_type: str = None) -> List[Dict[str, Any]]:
+            """
+            שליפת היסטוריית שיחה מה־MongoDB עבור המשתמש הנוכחי.
+            אם לא נבחר agent_type, מחזיר את כל ההודעות לכל האייג'נטים.
+            """
+            query_agent = agent_type if agent_type else {"$exists": True}
+            return self.mongo_history.get_history(
+                session_id=str(self.router_session_id),
+                user_id=self.user_id,
+                agent_type=query_agent
+            )
     
     async def _route_to_agent(self, user_message: str) -> str:
         """
