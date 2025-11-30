@@ -12,6 +12,57 @@ logger = logging.getLogger(__name__)
 
 
 class SessionManager:
+    def create_session_aa(self, session_id: str, user_id: str, title: str = None):
+        """
+        יצירת סשן חדש במונגו בלבד.
+        """
+        print(f"####################################SessionManager.create_session: session_id={session_id}, user_id={user_id}, title={title}")
+        from src.services.mongo_session_manager import MongoSessionManager
+        mongo_mgr = MongoSessionManager()
+        mongo_mgr.create_session(session_id, user_id, title)
+        print(f"#################################### ", mongo_mgr)
+
+
+    async def create_redis_session(self, user_id: str) -> Dict[str, Any]:
+        """
+        יצירת סשן חדש ברדיס בלבד.
+        """
+        await self.connect()
+        session_data = {
+            "user_id": user_id,
+            "files": [],
+            "history": [],
+            "state": {}
+        }
+        key = self._session_key(user_id)
+        await self.redis_client.set(
+            key,
+            json.dumps(session_data),
+            ex=settings.SESSION_TTL
+        )
+        logger.info(f"Created session for user {user_id}")
+        return session_data
+
+    def get_sessions_for_user(self, user_id: str) -> list:
+        """
+        שליפת כל הסשנים למשתמש מתוך session_history בלבד.
+        """
+        print(f"SessionManager.get_sessions_for_user: user_id={user_id}")
+        from src.services.mongo_session_history import MongoSessionHistory
+        mongo_history = MongoSessionHistory()
+        return mongo_history.get_sessions_for_user(user_id)
+
+    def create_session_for_user(self, user_id: str, title: str = None) -> str:
+        """
+        יוצר מזהה סשן חדש (UUID4) ושומר אותו במונגו.
+        """
+        
+        
+        import uuid
+        session_id = str(uuid.uuid4())
+        print(f"@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@SessionManager.create_session_for_user: user_id={user_id}, title={title}, session_id={session_id}")
+        self.create_session_aa(session_id, user_id, title)
+        return session_id
     """
     Manages user sessions in Redis.
     

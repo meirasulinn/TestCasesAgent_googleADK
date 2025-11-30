@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 class Orchestrator:
+    # ...existing code...
     """
     Multi-user orchestrator with LlmAgent-based routing.
     
@@ -53,7 +54,7 @@ class Orchestrator:
         self.session_manager = session_manager
         # No FAISSService here!
         self.file_parser = FileParserTool()
-        self.agents: Dict[str, BaseAgent] = {}
+        self.agents = {}
         self.adk_session_service = InMemorySessionService()
         self.adk_artifact_service = InMemoryArtifactService()
         self.router_agent: Optional[LlmAgent] = None
@@ -131,30 +132,25 @@ Rules:
         logger.info(f"Orchestrator initialized for user {self.user_id} with {len(self.agents)} agents")
         logger.info(f"Router agent created: {self.router_agent.name}")
     
-    async def handle_chat(self, message: str) -> Dict[str, Any]:
+    async def handle_chat(self, message: str, session_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Handle chat message from user with intelligent agent routing.
-        
         Args:
             message: User's message
-        
+            session_id: Optional session_id to use for saving history
         Returns:
             Response dict
         """
-        logger.info(f"User {self.user_id} chat: {message[:100]}...")
-        
+        logger.info(f"User {self.user_id} chat: {message[:100]}... session_id={session_id}")
         # Step 1: Use router agent to decide which agent to use
         agent_name = await self._route_to_agent(message)
         logger.info(f"Router selected agent: {agent_name}")
-        
         # Step 2: Get the selected agent
         agent = self.agents.get(agent_name)
         if not agent:
             logger.warning(f"Agent {agent_name} not found, falling back to test_case_agent")
             agent = self.agents.get("test_case_agent")
-        
         # Step 3: Execute with the selected agent
-        # For test_case_agent, we need to pass "spec" instead of "message"
         if agent_name == "test_case_agent":
             result = await agent.process({
                 "spec": message
@@ -164,16 +160,17 @@ Rules:
                 "action": "chat",
                 "message": message
             })
-        
         # שמירת הודעה והתגובה בהיסטוריית שיחה במונגו
+        import datetime
+        session_id_to_use = session_id if session_id else str(self.router_session_id)
         self.mongo_history.save_message(
-            session_id=str(self.router_session_id),
+            session_id=session_id_to_use,
             user_id=self.user_id,
             agent_type=agent_name,
             message={
                 "user_message": message,
                 "agent_response": result.get("response", ""),
-                "timestamp": __import__('datetime').datetime.utcnow().isoformat()
+                "timestamp": datetime.datetime.utcnow().isoformat()
             }
         )
         return {
@@ -327,7 +324,7 @@ Specification content:
 
 
 # Global orchestrator registry (one per user)
-_orchestrators: Dict[str, Orchestrator] = {}
+_orchestrators = {}
 
 
 async def get_orchestrator(user_id: str) -> Orchestrator:
