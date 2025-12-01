@@ -110,7 +110,8 @@ When you receive a specification, analyze it carefully and generate the test cas
         
         Args:
             input_data: {
-                "spec": str - specification text
+                "spec": str - specification text,
+                "history": list - conversation history (optional)
             }
         
         Returns:
@@ -122,6 +123,7 @@ When you receive a specification, analyze it carefully and generate the test cas
             }
         """
         spec_text = input_data.get("spec", "")
+        history = input_data.get("history", [])
         
         if not spec_text.strip():
             logger.error(f"Empty spec provided for user {self.user_id}")
@@ -159,7 +161,7 @@ When you receive a specification, analyze it carefully and generate the test cas
         
         # Generate using ADK
         logger.info(f"Generating test cases via ADK for user {self.user_id}")
-        result = await self._generate_with_adk(spec_text)
+        result = await self._generate_with_adk(spec_text, history)
         
         # Cache the result
         await self.set_cache(cache_key, result, ttl=3600)
@@ -173,13 +175,14 @@ When you receive a specification, analyze it carefully and generate the test cas
         result["source"] = "generated"
         return result
     
-    async def _generate_with_adk(self, spec_text: str) -> Dict[str, Any]:
+    async def _generate_with_adk(self, spec_text: str, history: list = None) -> Dict[str, Any]:
         """
         Generate test cases using Google ADK Runner.
         Following the reference pattern from test.py.
         
         Args:
             spec_text: Specification text
+            history: Conversation history from MongoDB
         
         Returns:
             Generated test cases
@@ -202,10 +205,25 @@ When you receive a specification, analyze it carefully and generate the test cas
             artifact_service=self.adk_artifact_service
         )
         
-        # Build user message (ADK pattern)
+        # Build context from history if provided
+        context_text = ""
+        if history and len(history) > 0:
+            context_text = "CONVERSATION HISTORY:\n"
+            for idx, msg in enumerate(history[-5:], 1):  # Last 5 messages for context
+                message_data = msg.get("message", {})
+                user_msg = message_data.get("user_message", "")
+                agent_resp = message_data.get("agent_response", "")
+                if user_msg:
+                    context_text += f"{idx}. User: {user_msg}\n"
+                if agent_resp:
+                    context_text += f"   Agent: {agent_resp[:200]}...\n\n"
+            context_text += "\n---\n\n"
+        
+        # Build user message with context (ADK pattern)
+        full_text = f"{context_text}CURRENT REQUEST:\n{spec_text}\n\nGenerate comprehensive test cases in JSON format."
         user_message = types.Content(
             role='user',
-            parts=[types.Part(text=f"SPECIFICATION:\n{spec_text}\n\nGenerate comprehensive test cases in JSON format.")]
+            parts=[types.Part(text=full_text)]
         )
         
         # Run agent and collect responses (ADK pattern)

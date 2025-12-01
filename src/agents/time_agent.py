@@ -119,7 +119,8 @@ Be helpful and concise.
         
         Args:
             input_data: {
-                "message": str - user's time request
+                "message": str - user's time request,
+                "history": list - conversation history (optional)
             }
         
         Returns:
@@ -128,6 +129,7 @@ Be helpful and concise.
             }
         """
         message = input_data.get("message", "")
+        history = input_data.get("history", [])
         
         if not message.strip():
             return {
@@ -158,10 +160,22 @@ Be helpful and concise.
             artifact_service=self.adk_artifact_service
         )
         
-        # Prepare user message
+        # Build context from history if provided
+        context_text = ""
+        if history and len(history) > 0:
+            context_text = "Previous conversation:\n"
+            for idx, msg in enumerate(history[-3:], 1):  # Last 3 messages
+                message_data = msg.get("message", {})
+                user_msg = message_data.get("user_message", "")
+                if user_msg:
+                    context_text += f"{idx}. User: {user_msg}\n"
+            context_text += "\nCurrent request:\n"
+        
+        # Prepare user message with context
+        full_message = f"{context_text}{message}" if context_text else message
         user_content = types.Content(
             role='user',
-            parts=[types.Part(text=message)]
+            parts=[types.Part(text=full_message)]
         )
         
         # Run agent and collect response

@@ -142,29 +142,43 @@ Rules:
             Response dict
         """
         logger.info(f"User {self.user_id} chat: {message[:100]}... session_id={session_id}")
+        
+        # Step 0: Create new session if session_id is empty or None
+        if not session_id:
+            session_id = self.session_manager.create_session_for_user(self.user_id)
+            logger.info(f"Created new session {session_id} for user {self.user_id}")
+        
+        # Step 0.5: Retrieve conversation history from MongoDB
+        history = self.mongo_history.get_history_by_session(session_id)
+        logger.info(f"Retrieved {len(history)} messages from history for session {session_id}")
+        
         # Step 1: Use router agent to decide which agent to use
         agent_name = await self._route_to_agent(message)
         logger.info(f"Router selected agent: {agent_name}")
+        
         # Step 2: Get the selected agent
         agent = self.agents.get(agent_name)
         if not agent:
             logger.warning(f"Agent {agent_name} not found, falling back to test_case_agent")
             agent = self.agents.get("test_case_agent")
-        # Step 3: Execute with the selected agent
+        
+        # Step 3: Execute with the selected agent, passing history
         if agent_name == "test_case_agent":
             result = await agent.process({
-                "spec": message
+                "spec": message,
+                "history": history
             })
         else:
             result = await agent.process({
                 "action": "chat",
-                "message": message
+                "message": message,
+                "history": history
             })
+        
         # שמירת הודעה והתגובה בהיסטוריית שיחה במונגו
         import datetime
-        session_id_to_use = session_id if session_id else str(self.router_session_id)
         self.mongo_history.save_message(
-            session_id=session_id_to_use,
+            session_id=session_id,
             user_id=self.user_id,
             agent_type=agent_name,
             message={
@@ -173,8 +187,10 @@ Rules:
                 "timestamp": datetime.datetime.utcnow().isoformat()
             }
         )
+        
         return {
             "response": result.get("response", ""),
+            "session_id": session_id,
             "agent_used": agent_name,
             "test_cases": result.get("test_cases", []),
             "total_count": result.get("total_count", 0),

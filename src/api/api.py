@@ -30,6 +30,7 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     response: str
+    session_id: str
     test_cases: Optional[list] = None
     coverage_areas: Optional[list] = None
     source: Optional[str] = None
@@ -142,6 +143,7 @@ async def chat(request: ChatRequest):
         result = await orchestrator.handle_chat(request.message, session_id=request.session_id)
         return ChatResponse(
             response=result.get("response", ""),
+            session_id=result.get("session_id", ""),
             test_cases=result.get("test_cases", []),
             coverage_areas=result.get("coverage_areas", []),
             source=result.get("source", "orchestrator")
